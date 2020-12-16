@@ -90,9 +90,11 @@ uint16_t ignition8EndTooth = 0;
 
 int16_t toothAngles[24]; //An array for storing fixed tooth angles. Currently sized at 24 for the GM 24X decoder, but may grow later if there are other decoders that use this style
 
-volatile char universalTeethSeen[64] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-volatile char universalExpectedPattern[64] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+// volatile char universalTeethSeen[64] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+// volatile char universalExpectedPattern[64] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 
+volatile uint64_t universalTeethSeen = 0;
+volatile uint64_t universalExpectedPattern = 0;
 /*
 *
 * whichTooth - 0 for Primary (Crank), 1 for Secondary (Cam)
@@ -3871,16 +3873,18 @@ void triggerSetup_universal()
 void triggerSetup_rover3611()
 {
   configPage4.triggerTeeth = 36;
-  char rover6311[36] = {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0};
-  for (int i=0; i<36; i++) { universalExpectedPattern[i] = rover6311[i]; }
+  // char rover6311[36] = {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0};
+  // for (int i=0; i<36; i++) { universalExpectedPattern[i] = rover6311[i]; }
+  // universalExpectedPattern = 0b1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0;
   triggerSetup_universal();
 }
 
 void triggerSetup_renault4411()
 {
   configPage4.triggerTeeth = 44;
-  char renault4411[44] = {1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1};
-  for (int i=0; i<44; i++) { universalExpectedPattern[i] = renault4411[i]; }
+  // char renault4411[44] = {1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1};
+  // for (int i=0; i<44; i++) { universalExpectedPattern[i] = renault4411[i]; }
+  universalExpectedPattern = 0b11111111111101011111111111111111110101111111ULL;
   triggerSetup_universal();
 }
 
@@ -3890,10 +3894,11 @@ void syncLoss_universal()
   currentStatus.hasSync = false;
   currentStatus.syncLossCounter++;
   toothCurrentCount = 0;
-  for (int i=0; i<configPage4.triggerTeeth; i++)
-  {
-    universalTeethSeen[i] = 0;
-  }
+  universalTeethSeen = 0;
+  // for (int i=0; i<configPage4.triggerTeeth; i++)
+  // {
+  //   universalTeethSeen[i] = 0;
+  // }
   secondaryToothCount = 0;
   interrupts();
 }
@@ -3902,12 +3907,19 @@ void appendTooth_universal(byte value)
 {
   // add a tooth or gap to the end of our "seen teeth" array
   // shift left to make room for the new value
-  for (int i=0; i<configPage4.triggerTeeth-1; i++)
-  {
-    universalTeethSeen[i] = universalTeethSeen[i+1];
-  }
+  // for (int i=0; i<configPage4.triggerTeeth-1; i++)
+  // {
+  //   universalTeethSeen[i] = universalTeethSeen[i+1];
+  // }
+
+  universalTeethSeen = universalTeethSeen << 1;
+  // clear the bit we shifted into
+  bitClear(universalTeethSeen, configPage4.triggerTeeth-1);
+
   // "append" the value to the end
-  universalTeethSeen[configPage4.triggerTeeth-1] = value;
+  // universalTeethSeen[configPage4.triggerTeeth-1] = value;
+  universalTeethSeen += value;
+
 }
 
 void checkPattern_universal()
@@ -3916,10 +3928,11 @@ void checkPattern_universal()
   if (toothCurrentCount < configPage4.triggerTeeth) { return; }
 
   // compare what we saw with the expected pattern
-  for (int i=0; i<configPage4.triggerTeeth; i++)
-  {
-    if (universalTeethSeen[i] != universalExpectedPattern[i]) { return; }
-  }
+  // for (int i=0; i<configPage4.triggerTeeth; i++)
+  // {
+  //   if (universalTeethSeen[i] != universalExpectedPattern[i]) { return; }
+  // }
+  if (universalTeethSeen != universalExpectedPattern) { return; }
 
   // must be exactly matching the pattern if we get this far
   currentStatus.hasSync = true;
